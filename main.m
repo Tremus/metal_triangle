@@ -3,18 +3,23 @@
 
 #include "AAPLShaderTypes.h"
 
+#define ARRLEN(a) (sizeof(a) / sizeof(a[0]))
+
 @interface Delegate : NSObject <NSApplicationDelegate, MTKViewDelegate>
 {
 @public
-    NSWindow*    _window;
-    MTKView*     _view;
-    vector_uint2 _viewportSize;
+    NSWindow*     _window;
+    MTKView*      _view;
+    vector_float2 _viewsize;
 
     // The render pipeline generated from the vertex and fragment shaders in the .metal shader file.
-    id<MTLRenderPipelineState> _pipelineState;
+    id<MTLRenderPipelineState> _tri_pipeline;
+    id<MTLRenderPipelineState> _circle_pipeline;
 
     // The command queue used to pass commands to the device.
     id<MTLCommandQueue> _commandQueue;
+
+    id<MTLBuffer> _vertexBuffer;
 };
 
 @end
@@ -24,6 +29,13 @@
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)application
 {
     return YES;
+}
+
+- (void)mtkView:(nonnull MTKView*)view drawableSizeWillChange:(CGSize)size;
+{
+    // Save the size of the drawable to pass to the vertex shader.
+    _viewsize.x = size.width;
+    _viewsize.y = size.height;
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification
@@ -39,7 +51,7 @@
 
     _view            = [[MTKView alloc] init];
     _view.device     = MTLCreateSystemDefaultDevice();
-    _view.clearColor = MTLClearColorMake(0.0, 0.5, 1.0, 1.0);
+    _view.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
     // 'setNeedsDisplay' marks the view as dirty. This is for on demand rendering, rather than rendering every frame
     // _view.enableSetNeedsDisplay = YES;
     _view.delegate = self;
@@ -62,26 +74,35 @@
 #pragma clang diagnostic pop
     }
 
-    id<MTLFunction> vertexFunction   = [defaultLibrary newFunctionWithName:@"vertexShader"];
-    id<MTLFunction> fragmentFunction = [defaultLibrary newFunctionWithName:@"fragmentShader"];
-    assert(vertexFunction != nil);
-    assert(fragmentFunction != nil);
-
     // Configure a pipeline descriptor that is used to create a pipeline state.
-    MTLRenderPipelineDescriptor* pipelineStateDescriptor    = [[MTLRenderPipelineDescriptor alloc] init];
-    pipelineStateDescriptor.label                           = @"Simple Pipeline";
-    pipelineStateDescriptor.vertexFunction                  = vertexFunction;
-    pipelineStateDescriptor.fragmentFunction                = fragmentFunction;
-    pipelineStateDescriptor.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
+    MTLRenderPipelineDescriptor* tri_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+
+    tri_pipeline.label            = @"Triangle Pipeline";
+    tri_pipeline.vertexFunction   = [defaultLibrary newFunctionWithName:@"triangle_vert"];
+    tri_pipeline.fragmentFunction = [defaultLibrary newFunctionWithName:@"triangle_frag"];
+    assert(tri_pipeline.vertexFunction != nil);
+    assert(tri_pipeline.fragmentFunction != nil);
+
+    tri_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
 
     NSError* error;
-    _pipelineState = [_view.device newRenderPipelineStateWithDescriptor:pipelineStateDescriptor error:&error];
-
+    _tri_pipeline = [_view.device newRenderPipelineStateWithDescriptor:tri_pipeline error:&error];
     // Pipeline State creation could fail if the pipeline descriptor isn't set up properly.
-    //  If the Metal API validation is enabled, you can find out more information about what
-    //  went wrong.  (Metal API validation is enabled by default when a debug build is run
-    //  from Xcode.)
-    NSAssert(_pipelineState, @"Failed to create pipeline state: %@", error);
+    // If the Metal API validation is enabled, you can find out more information about what went wrong.
+    // (Metal API validation is enabled by default when a debug build is run from Xcode.)
+    NSAssert(_tri_pipeline, @"Failed to create pipeline state: %@", error);
+
+    MTLRenderPipelineDescriptor* circle_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+
+    circle_pipeline.vertexFunction   = [defaultLibrary newFunctionWithName:@"circle_vert"];
+    circle_pipeline.fragmentFunction = [defaultLibrary newFunctionWithName:@"circle_frag"];
+    assert(circle_pipeline.vertexFunction != nil);
+    assert(circle_pipeline.fragmentFunction != nil);
+
+    tri_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
+
+    _circle_pipeline = [_view.device newRenderPipelineStateWithDescriptor:circle_pipeline error:&error];
+    NSAssert(_circle_pipeline, @"Failed to create pipeline state: %@", error);
 
     // Create the command queue
     _commandQueue = [_view.device newCommandQueue];
@@ -91,17 +112,17 @@
 - (void)applicationWillTerminate:(NSNotification*)notification
 {
     // Shutdown
-}
-
-- (void)mtkView:(nonnull MTKView*)view drawableSizeWillChange:(CGSize)size;
-{
-    printf("drawing\n");
-    // Save the size of the drawable to pass to the vertex shader.
-    _viewportSize.x = size.width;
-    _viewportSize.y = size.height;
+    [_tri_pipeline release];
+    [_circle_pipeline release];
 }
 
 - (void)drawInMTKView:(nonnull MTKView*)view
+{
+    // [self drawTriangle:view];
+    [self drawCircle:view];
+}
+
+- (void)drawTriangle:(nonnull MTKView*)view
 {
     static const AAPLVertex triangleVertices[] = {
         // 2D positions,    RGBA colors
@@ -112,7 +133,7 @@
 
     // Create a new command buffer for each render pass to the current drawable.
     id<MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
-    commandBuffer.label                = @"MyCommand";
+    // commandBuffer.label                = @"MyCommand";
 
     // Obtain a renderPassDescriptor generated from the view's drawable textures.
     MTLRenderPassDescriptor* renderPassDescriptor = view.currentRenderPassDescriptor;
@@ -122,21 +143,19 @@
         // Create a render command encoder.
         id<MTLRenderCommandEncoder> renderEncoder =
             [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
-        renderEncoder.label = @"MyRenderEncoder";
+        // renderEncoder.label = @"MyRenderEncoder";
 
         // Set the region of the drawable to draw into.
-        [renderEncoder setViewport:(MTLViewport){0.0, 0.0, _viewportSize.x, _viewportSize.y, 0.0, 1.0}];
+        [renderEncoder setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
 
-        [renderEncoder setRenderPipelineState:_pipelineState];
+        [renderEncoder setRenderPipelineState:_tri_pipeline];
 
         // Pass in the parameter data.
         [renderEncoder setVertexBytes:triangleVertices
                                length:sizeof(triangleVertices)
                               atIndex:AAPLVertexInputIndexVertices];
 
-        [renderEncoder setVertexBytes:&_viewportSize
-                               length:sizeof(_viewportSize)
-                              atIndex:AAPLVertexInputIndexViewportSize];
+        [renderEncoder setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:AAPLVertexInputIndexViewportSize];
 
         // Draw the triangle.
         [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
@@ -148,6 +167,32 @@
     }
 
     // Finalize rendering here & push the command buffer to the GPU.
+    [commandBuffer commit];
+}
+
+- (void)drawCircle:(nonnull MTKView*)view
+{
+    static const SimpleVertex verts[] = {
+        {{250, -250}, {1, 1, 1, 1}},
+        {{-250, -250}, {1, 1, 1, 1}},
+        {{0, 250}, {1, 1, 1, 1}},
+    };
+
+    id<MTLCommandBuffer>     commandBuffer        = [_commandQueue commandBuffer];
+    MTLRenderPassDescriptor* renderPassDescriptor = view.currentRenderPassDescriptor;
+    // Change the BG colour on the fly
+    renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0.5, 1, 1);
+    id<MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+
+    [renderEncoder setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
+    [renderEncoder setRenderPipelineState:_tri_pipeline];
+
+    [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:AAPLVertexInputIndexVertices];
+    [renderEncoder setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:AAPLVertexInputIndexViewportSize];
+    [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+
+    [renderEncoder endEncoding];
+    [commandBuffer presentDrawable:view.currentDrawable];
     [commandBuffer commit];
 }
 

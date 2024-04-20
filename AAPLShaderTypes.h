@@ -28,4 +28,10 @@ typedef struct
     vector_float4 color;
 } AAPLVertex;
 
+typedef struct
+{
+    vector_float2 position;
+    vector_float4 color;
+} SimpleVertex;
+
 #endif /* AAPLShaderTypes_h */

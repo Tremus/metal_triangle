@@ -11,7 +11,6 @@ using namespace metal;
 
 // Include header shared between this Metal shader code and C code executing Metal API commands.
 #include "AAPLShaderTypes.h"
-
 // Vertex shader outputs and fragment shader inputs
 struct RasterizerData
 {
@@ -28,9 +27,9 @@ struct RasterizerData
 };
 
 vertex RasterizerData
-vertexShader(uint vertexID [[vertex_id]],
+triangle_vert(uint vertexID [[vertex_id]],
              constant AAPLVertex *vertices [[buffer(AAPLVertexInputIndexVertices)]],
-             constant vector_uint2 *viewportSizePointer [[buffer(AAPLVertexInputIndexViewportSize)]])
+             constant vector_float2* viewportSizePointer [[buffer(AAPLVertexInputIndexViewportSize)]])
 {
     RasterizerData out;
 
@@ -44,7 +43,7 @@ vertexShader(uint vertexID [[vertex_id]],
     
 
     // To convert from positions in pixel space to positions in clip-space,
-    //  divide the pixel coordinates by half the size of the viewport.
+    // divide the pixel coordinates by half the size of the viewport.
     out.position = vector_float4(0.0, 0.0, 0.0, 1.0);
     out.position.xy = pixelSpacePosition / (viewportSize / 2.0);
 
@@ -54,9 +53,30 @@ vertexShader(uint vertexID [[vertex_id]],
     return out;
 }
 
-fragment float4 fragmentShader(RasterizerData in [[stage_in]])
+fragment float4 triangle_frag(RasterizerData in [[stage_in]])
 {
     // Return the interpolated color.
     return in.color;
 }
 
+
+vertex RasterizerData
+circle_vert(uint vertexID [[vertex_id]],
+            constant SimpleVertex* vertices [[buffer(AAPLVertexInputIndexVertices)]],
+            constant vector_float2* pViewportSize [[buffer(AAPLVertexInputIndexViewportSize)]])
+{
+    RasterizerData out;
+    
+    out.position.xy = vertices[vertexID].position.xy / (*pViewportSize / 2.0);
+    out.position.z = 0.0;
+    out.position.w = 1.0;
+
+    out.color = vertices[vertexID].color;
+
+    return out;
+}
+
+fragment float4 circle_frag(RasterizerData in [[stage_in]])
+{
+    return in.color;
+}

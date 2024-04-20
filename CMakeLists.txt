@@ -18,6 +18,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE "-framework Cocoa -framework Metal
 # https://developer.apple.com/documentation/metal/shader_libraries/building_a_shader_library_by_precompiling_source_files?language=objc
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND mkdir -p ${CMAKE_SOURCE_DIR}/precompiled
+        COMMAND echo "Recompiling shaders"
         COMMAND xcrun -sdk macosx metal -o ${CMAKE_SOURCE_DIR}/precompiled/AAPLShaders.ir -c ${CMAKE_SOURCE_DIR}/AAPLShaders.metal
         COMMAND xcrun -sdk macosx metallib -o ${CMAKE_SOURCE_DIR}/precompiled/AAPLShaders.metallib ${CMAKE_SOURCE_DIR}/precompiled/AAPLShaders.ir
         )
