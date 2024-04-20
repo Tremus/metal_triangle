@@ -23,7 +23,7 @@ struct RasterizerData
     // interpolates its value with the values of the other triangle vertices
     // and then passes the interpolated value to the fragment shader for each
     // fragment in the triangle.
-    float4 color;
+    half4 colour;
 };
 
 vertex RasterizerData
@@ -47,16 +47,16 @@ triangle_vert(uint vertexID [[vertex_id]],
     out.position = vector_float4(0.0, 0.0, 0.0, 1.0);
     out.position.xy = pixelSpacePosition / (viewportSize / 2.0);
 
-    // Pass the input color directly to the rasterizer.
-    out.color = vertices[vertexID].color;
+    // Pass the input colour directly to the rasterizer.
+    out.colour = half4(vertices[vertexID].colour);
 
     return out;
 }
 
-fragment float4 triangle_frag(RasterizerData in [[stage_in]])
+fragment half4 triangle_frag(RasterizerData in [[stage_in]])
 {
-    // Return the interpolated color.
-    return in.color;
+    // Return the interpolated colour.
+    return in.colour;
 }
 
 
@@ -69,14 +69,14 @@ square_vert(uint vertexID [[vertex_id]],
     out.position.xy = vertices[vertexID].position.xy;
     out.position.zw = float2(0, 1);
 
-    out.color = vertices[vertexID].color;
+    out.colour = half4(vertices[vertexID].colour);
 
     return out;
 }
 
-fragment float4 square_frag(RasterizerData in [[stage_in]])
+fragment half4 square_frag(RasterizerData in [[stage_in]])
 {
-    return in.color;
+    return in.colour;
 }
 
 // TODO rounded rectangle

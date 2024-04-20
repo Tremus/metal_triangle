@@ -25,13 +25,13 @@ typedef enum AAPLVertexInputIndex
 typedef struct
 {
     vector_float2 position;
-    vector_float4 color;
+    vector_float4 colour;
 } AAPLVertex;
 
 typedef struct
 {
     vector_float2 position;
-    vector_float4 color;
+    vector_float4 colour;
 } SimpleVertex;
 
 #endif /* AAPLShaderTypes_h */
