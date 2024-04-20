@@ -61,22 +61,28 @@ fragment float4 triangle_frag(RasterizerData in [[stage_in]])
 
 
 vertex RasterizerData
-circle_vert(uint vertexID [[vertex_id]],
+square_vert(uint vertexID [[vertex_id]],
             constant SimpleVertex* vertices [[buffer(AAPLVertexInputIndexVertices)]],
             constant vector_float2* pViewportSize [[buffer(AAPLVertexInputIndexViewportSize)]])
 {
     RasterizerData out;
     
-    out.position.xy = vertices[vertexID].position.xy / (*pViewportSize / 2.0);
-    out.position.z = 0.0;
-    out.position.w = 1.0;
+    out.position.xy = vertices[vertexID].position.xy / (*pViewportSize / 2);
+    out.position.zw = float2(0, 1);
 
     out.color = vertices[vertexID].color;
 
     return out;
 }
 
-fragment float4 circle_frag(RasterizerData in [[stage_in]])
+fragment float4 square_frag(RasterizerData in [[stage_in]])
 {
     return in.color;
 }
+
+// TODO rounded rectangle
+// TODO circle
+// TODO ellipse
+// TODO point
+// TODO straight line
+// TODO bezier line

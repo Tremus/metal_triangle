@@ -14,7 +14,7 @@
 
     // The render pipeline generated from the vertex and fragment shaders in the .metal shader file.
     id<MTLRenderPipelineState> _tri_pipeline;
-    id<MTLRenderPipelineState> _circle_pipeline;
+    id<MTLRenderPipelineState> _square_pipeline;
 
     // The command queue used to pass commands to the device.
     id<MTLCommandQueue> _commandQueue;
@@ -40,7 +40,7 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification*)notification
 {
-    _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 600, 500)
+    _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 500, 500)
                                           styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
                                             backing:NSBackingStoreBuffered
                                               defer:NO];
@@ -82,7 +82,6 @@
     tri_pipeline.fragmentFunction = [defaultLibrary newFunctionWithName:@"triangle_frag"];
     assert(tri_pipeline.vertexFunction != nil);
     assert(tri_pipeline.fragmentFunction != nil);
-
     tri_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
 
     NSError* error;
@@ -92,17 +91,16 @@
     // (Metal API validation is enabled by default when a debug build is run from Xcode.)
     NSAssert(_tri_pipeline, @"Failed to create pipeline state: %@", error);
 
-    MTLRenderPipelineDescriptor* circle_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+    MTLRenderPipelineDescriptor* square_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
 
-    circle_pipeline.vertexFunction   = [defaultLibrary newFunctionWithName:@"circle_vert"];
-    circle_pipeline.fragmentFunction = [defaultLibrary newFunctionWithName:@"circle_frag"];
-    assert(circle_pipeline.vertexFunction != nil);
-    assert(circle_pipeline.fragmentFunction != nil);
+    square_pipeline.vertexFunction   = [defaultLibrary newFunctionWithName:@"square_vert"];
+    square_pipeline.fragmentFunction = [defaultLibrary newFunctionWithName:@"square_frag"];
+    assert(square_pipeline.vertexFunction != nil);
+    assert(square_pipeline.fragmentFunction != nil);
+    square_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
 
-    tri_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
-
-    _circle_pipeline = [_view.device newRenderPipelineStateWithDescriptor:circle_pipeline error:&error];
-    NSAssert(_circle_pipeline, @"Failed to create pipeline state: %@", error);
+    _square_pipeline = [_view.device newRenderPipelineStateWithDescriptor:square_pipeline error:&error];
+    NSAssert(_square_pipeline, @"Failed to create pipeline state: %@", error);
 
     // Create the command queue
     _commandQueue = [_view.device newCommandQueue];
@@ -113,13 +111,13 @@
 {
     // Shutdown
     [_tri_pipeline release];
-    [_circle_pipeline release];
+    [_square_pipeline release];
 }
 
 - (void)drawInMTKView:(nonnull MTKView*)view
 {
     // [self drawTriangle:view];
-    [self drawCircle:view];
+    [self drawSquare:view];
 }
 
 - (void)drawTriangle:(nonnull MTKView*)view
@@ -170,12 +168,17 @@
     [commandBuffer commit];
 }
 
-- (void)drawCircle:(nonnull MTKView*)view
+- (void)drawSquare:(nonnull MTKView*)view
 {
     static const SimpleVertex verts[] = {
-        {{250, -250}, {1, 1, 1, 1}},
-        {{-250, -250}, {1, 1, 1, 1}},
-        {{0, 250}, {1, 1, 1, 1}},
+        // 2D positions,    RGBA colors
+        {{250, -250}, {1, 0, 0, 1}},
+        {{-250, -250}, {0, 1, 0, 1}},
+        {{-250, 250}, {0, 0, 1, 1}},
+
+        {{250, -250}, {1, 0, 0, 1}},
+        {{250, 250}, {1, 1, 1, 1}},
+        {{-250, 250}, {0, 0, 1, 1}},
     };
 
     id<MTLCommandBuffer>     commandBuffer        = [_commandQueue commandBuffer];
@@ -183,15 +186,14 @@
     // Change the BG colour on the fly
     renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0.5, 1, 1);
     id<MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
-
     [renderEncoder setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
-    [renderEncoder setRenderPipelineState:_tri_pipeline];
+    [renderEncoder setRenderPipelineState:_square_pipeline];
 
     [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:AAPLVertexInputIndexVertices];
     [renderEncoder setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:AAPLVertexInputIndexViewportSize];
-    [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
-
+    [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:ARRLEN(verts)];
     [renderEncoder endEncoding];
+
     [commandBuffer presentDrawable:view.currentDrawable];
     [commandBuffer commit];
 }
