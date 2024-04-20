@@ -62,12 +62,11 @@ fragment float4 triangle_frag(RasterizerData in [[stage_in]])
 
 vertex RasterizerData
 square_vert(uint vertexID [[vertex_id]],
-            constant SimpleVertex* vertices [[buffer(AAPLVertexInputIndexVertices)]],
-            constant vector_float2* pViewportSize [[buffer(AAPLVertexInputIndexViewportSize)]])
+            constant SimpleVertex* vertices [[buffer(AAPLVertexInputIndexVertices)]])
 {
     RasterizerData out;
     
-    out.position.xy = vertices[vertexID].position.xy / (*pViewportSize / 2);
+    out.position.xy = vertices[vertexID].position.xy;
     out.position.zw = float2(0, 1);
 
     out.color = vertices[vertexID].color;

@@ -92,13 +92,11 @@
     NSAssert(_tri_pipeline, @"Failed to create pipeline state: %@", error);
 
     MTLRenderPipelineDescriptor* square_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
-
-    square_pipeline.vertexFunction   = [defaultLibrary newFunctionWithName:@"square_vert"];
-    square_pipeline.fragmentFunction = [defaultLibrary newFunctionWithName:@"square_frag"];
+    square_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"square_vert"];
+    square_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"square_frag"];
     assert(square_pipeline.vertexFunction != nil);
     assert(square_pipeline.fragmentFunction != nil);
     square_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
-
     _square_pipeline = [_view.device newRenderPipelineStateWithDescriptor:square_pipeline error:&error];
     NSAssert(_square_pipeline, @"Failed to create pipeline state: %@", error);
 
@@ -170,15 +168,15 @@
 
 - (void)drawSquare:(nonnull MTKView*)view
 {
-    static const SimpleVertex verts[] = {
+    static SimpleVertex verts[] = {
         // 2D positions,    RGBA colors
-        {{250, -250}, {1, 0, 0, 1}},
-        {{-250, -250}, {0, 1, 0, 1}},
-        {{-250, 250}, {0, 0, 1, 1}},
+        {{0.5, -0.5}, {1, 0, 0, 1}},
+        {{-0.5, -0.5}, {0, 1, 0, 1}},
+        {{-0.5, 0.5}, {0, 0, 1, 1}},
 
-        {{250, -250}, {1, 0, 0, 1}},
-        {{250, 250}, {1, 1, 1, 1}},
-        {{-250, 250}, {0, 0, 1, 1}},
+        {{0.5, -0.5}, {1, 0, 0, 1}},
+        {{0.5, 0.5}, {1, 1, 1, 1}},
+        {{-0.5, 0.5}, {0, 0, 1, 1}},
     };
 
     id<MTLCommandBuffer>     commandBuffer        = [_commandQueue commandBuffer];
@@ -190,7 +188,6 @@
     [renderEncoder setRenderPipelineState:_square_pipeline];
 
     [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:AAPLVertexInputIndexVertices];
-    [renderEncoder setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:AAPLVertexInputIndexViewportSize];
     [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:ARRLEN(verts)];
     [renderEncoder endEncoding];
 
