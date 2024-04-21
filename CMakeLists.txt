@@ -4,7 +4,7 @@ project(metal_triangle VERSION 0.0.1 LANGUAGES C OBJC)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.11")
 
 add_executable(${PROJECT_NAME} MACOSX_BUNDLE
-    main.m
+    src/main.m
     ${CMAKE_BINARY_DIR}/shaders.metallib
     )
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -13,9 +13,12 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME ${PROJECT_NAME}
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
-    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/app.plist.in
+    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/resources/app.plist.in
 )
-target_compile_definitions(${PROJECT_NAME} PRIVATE SHADER_LIB_PATH="${CMAKE_BINARY_DIR}/shaders.metallib")
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    PATH_SHADERS="${CMAKE_BINARY_DIR}/shaders.metallib"
+    PATH_RESOURCES="${CMAKE_SOURCE_DIR}/resources/"
+    )
 target_link_libraries(${PROJECT_NAME} PRIVATE "-framework Cocoa -framework Metal -framework MetalKit")
 
 # Compile metal shaders
@@ -24,7 +27,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE "-framework Cocoa -framework Metal
 add_custom_command(
         OUTPUT ${CMAKE_BINARY_DIR}/shaders.metallib
         COMMAND echo "Recompiling shaders"
-        COMMAND xcrun -sdk macosx metal    -o ${CMAKE_BINARY_DIR}/shaders.ir    -c ${CMAKE_SOURCE_DIR}/shaders.metal
+        COMMAND xcrun -sdk macosx metal    -o ${CMAKE_BINARY_DIR}/shaders.ir    -c ${CMAKE_SOURCE_DIR}/src/shaders.metal
         COMMAND xcrun -sdk macosx metallib -o ${CMAKE_BINARY_DIR}/shaders.metallib ${CMAKE_BINARY_DIR}/shaders.ir
-        DEPENDS shaders.metal
+        DEPENDS src/shaders.metal
         )

@@ -61,7 +61,7 @@
     id<MTLLibrary> defaultLibrary = nil;
     if (@available(macOS 10.13, *))
     {
-        NSURL* url     = [[NSURL alloc] initWithString:@(SHADER_LIB_PATH)];
+        NSURL* url     = [[NSURL alloc] initWithString:@(PATH_SHADERS)];
         defaultLibrary = [_view.device newLibraryWithURL:url error:nil];
         assert(defaultLibrary);
         [url release];
@@ -70,7 +70,7 @@
     {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        defaultLibrary = [_view.device newLibraryWithFile:@(SHADER_LIB_PATH) error:nil];
+        defaultLibrary = [_view.device newLibraryWithFile:@(PATH_SHADERS) error:nil];
         assert(defaultLibrary);
 #pragma clang diagnostic pop
     }
