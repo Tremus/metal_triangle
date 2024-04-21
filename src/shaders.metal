@@ -97,12 +97,38 @@ fragment half4 circle_frag(RasterizerData in [[stage_in]])
     return half4(1);
 }
 
+struct RasterizeImage
+{
+    float4 position [[position]];
+    float2 texCoords;
+};
+
+vertex RasterizeImage
+image_vert(uint vertexID [[vertex_id]],
+            constant TexVertex* vertices [[buffer(0)]])
+{
+    RasterizeImage out;
+
+    out.position.xy = vertices[vertexID].position.xy;
+    out.position.zw = float2(0, 1);
+    out.texCoords   = vertices[vertexID].texCoords;
+
+    return out;
+}
+
+fragment half4 image_frag(RasterizeImage in [[stage_in]],
+                          sampler sampler2d [[sampler(0)]],
+                          texture2d<float> texture [[texture(0)]])
+{
+    float4 sample = texture.sample(sampler2d, in.texCoords);
+    return half4(sample.r, sample.g, sample.b, 1);
+}
+
 // TODO rounded rectangle
 // TODO circle antialiased
 // TODO ellipse
 // TODO point
 // TODO straight line
 // TODO bezier line
-// TODO image
 // TODO image resize
 // TODO image blur

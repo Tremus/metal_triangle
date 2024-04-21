@@ -2,8 +2,10 @@
 #include <MetalKit/MetalKit.h>
 
 #include "AAPLShaderTypes.h"
+#include "stb_image.h"
 
-#define ARRLEN(a) (sizeof(a) / sizeof(a[0]))
+#define ARRLEN(a)     (sizeof(a) / sizeof(a[0]))
+#define xassert(cond) (cond) ? (void)0 : __builtin_debugtrap()
 
 @interface Delegate : NSObject <NSApplicationDelegate, MTKViewDelegate>
 {
@@ -16,11 +18,13 @@
     id<MTLRenderPipelineState> _tri_pipeline;
     id<MTLRenderPipelineState> _square_pipeline;
     id<MTLRenderPipelineState> _circle_pipeline;
+    id<MTLRenderPipelineState> _image_pipeline;
 
     // The command queue used to pass commands to the device.
     id<MTLCommandQueue> _commandQueue;
 
-    id<MTLBuffer> _vertexBuffer;
+    id<MTLTexture>      _tex_chad;
+    id<MTLSamplerState> _samplerState;
 };
 
 @end
@@ -57,78 +61,132 @@
     // _view.enableSetNeedsDisplay = YES;
     _view.delegate = self;
 
-    // Load all the shader files with a .metal file extension in the project.
-    id<MTLLibrary> defaultLibrary = nil;
-    if (@available(macOS 10.13, *))
+    NSError* error;
+
+    // TEXTURES
     {
-        NSURL* url     = [[NSURL alloc] initWithString:@(PATH_SHADERS)];
-        defaultLibrary = [_view.device newLibraryWithURL:url error:nil];
-        assert(defaultLibrary);
-        [url release];
+        stbi_set_flip_vertically_on_load(1);
+
+        int width, height, channels_in_file;
+        // The jpg image will only have 3 colour channels (RGB), but we require RGBA for the stack blur algorithm
+        const int      desired_channels = 4;
+        unsigned char* imgbuf =
+            stbi_load(PATH_RESOURCES "brain.jpg", &width, &height, &channels_in_file, desired_channels);
+
+        MTLTextureDescriptor* desc = [MTLTextureDescriptor new];
+
+        desc.pixelFormat = MTLPixelFormatRGBA8Unorm;
+        desc.width       = width;
+        desc.height      = height;
+
+        _tex_chad = [_view.device newTextureWithDescriptor:desc];
+        xassert(_tex_chad);
+
+        const NSUInteger bytesperrow = desired_channels * width;
+
+        MTLRegion region = {{0, 0, 0}, {width, height, 1}};
+
+        [_tex_chad replaceRegion:region mipmapLevel:0 withBytes:imgbuf bytesPerRow:bytesperrow];
+
+        stbi_image_free(imgbuf);
     }
-    else
     {
+        MTLSamplerDescriptor* desc = [[MTLSamplerDescriptor alloc] init];
+        desc.minFilter             = MTLSamplerMinMagFilterLinear;
+        desc.magFilter             = MTLSamplerMinMagFilterLinear;
+
+        _samplerState = [_view.device newSamplerStateWithDescriptor:desc];
+        xassert(_samplerState);
+    }
+
+    // PIPELINES & SHADERS
+    {
+        // Load all the shader files with a .metal file extension in the project.
+        id<MTLLibrary> defaultLibrary = nil;
+        if (@available(macOS 10.13, *))
+        {
+            NSURL* url     = [[NSURL alloc] initWithString:@(PATH_SHADERS)];
+            defaultLibrary = [_view.device newLibraryWithURL:url error:nil];
+            xassert(defaultLibrary);
+            [url release];
+        }
+        else
+        {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        defaultLibrary = [_view.device newLibraryWithFile:@(PATH_SHADERS) error:nil];
-        assert(defaultLibrary);
+            defaultLibrary = [_view.device newLibraryWithFile:@(PATH_SHADERS) error:nil];
+            xassert(defaultLibrary);
 #pragma clang diagnostic pop
+        }
+
+        // Configure a pipeline descriptor that is used to create a pipeline state.
+        MTLRenderPipelineDescriptor* tri_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+
+        tri_pipeline.label            = @"Triangle Pipeline";
+        tri_pipeline.vertexFunction   = [defaultLibrary newFunctionWithName:@"triangle_vert"];
+        tri_pipeline.fragmentFunction = [defaultLibrary newFunctionWithName:@"triangle_frag"];
+        xassert(tri_pipeline.vertexFunction != nil);
+        xassert(tri_pipeline.fragmentFunction != nil);
+        tri_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
+
+        _tri_pipeline = [_view.device newRenderPipelineStateWithDescriptor:tri_pipeline error:&error];
+        // Pipeline State creation could fail if the pipeline descriptor isn't set up properly.
+        // If the Metal API validation is enabled, you can find out more information about what went wrong.
+        // (Metal API validation is enabled by default when a debug build is run from Xcode.)
+        xassert(_tri_pipeline);
+
+        MTLRenderPipelineDescriptor* square_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+        square_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"square_vert"];
+        square_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"square_frag"];
+        assert(square_pipeline.vertexFunction != nil);
+        assert(square_pipeline.fragmentFunction != nil);
+        square_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
+        _square_pipeline = [_view.device newRenderPipelineStateWithDescriptor:square_pipeline error:&error];
+        xassert(_square_pipeline);
+
+        MTLRenderPipelineDescriptor* circle_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+        circle_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"circle_vert"];
+        circle_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"circle_frag"];
+        xassert(circle_pipeline.vertexFunction != nil);
+        xassert(circle_pipeline.fragmentFunction != nil);
+        circle_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
+        _circle_pipeline = [_view.device newRenderPipelineStateWithDescriptor:circle_pipeline error:&error];
+        xassert(_circle_pipeline);
+
+        MTLRenderPipelineDescriptor* image_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+        image_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"image_vert"];
+        image_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"image_frag"];
+        xassert(image_pipeline.vertexFunction != nil);
+        xassert(image_pipeline.fragmentFunction != nil);
+        image_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
+        _image_pipeline = [_view.device newRenderPipelineStateWithDescriptor:image_pipeline error:&error];
+        xassert(_image_pipeline);
     }
-
-    // Configure a pipeline descriptor that is used to create a pipeline state.
-    MTLRenderPipelineDescriptor* tri_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
-
-    tri_pipeline.label            = @"Triangle Pipeline";
-    tri_pipeline.vertexFunction   = [defaultLibrary newFunctionWithName:@"triangle_vert"];
-    tri_pipeline.fragmentFunction = [defaultLibrary newFunctionWithName:@"triangle_frag"];
-    assert(tri_pipeline.vertexFunction != nil);
-    assert(tri_pipeline.fragmentFunction != nil);
-    tri_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
-
-    NSError* error;
-    _tri_pipeline = [_view.device newRenderPipelineStateWithDescriptor:tri_pipeline error:&error];
-    // Pipeline State creation could fail if the pipeline descriptor isn't set up properly.
-    // If the Metal API validation is enabled, you can find out more information about what went wrong.
-    // (Metal API validation is enabled by default when a debug build is run from Xcode.)
-    NSAssert(_tri_pipeline, @"Failed to create pipeline state: %@", error);
-
-    MTLRenderPipelineDescriptor* square_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
-    square_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"square_vert"];
-    square_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"square_frag"];
-    assert(square_pipeline.vertexFunction != nil);
-    assert(square_pipeline.fragmentFunction != nil);
-    square_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
-    _square_pipeline = [_view.device newRenderPipelineStateWithDescriptor:square_pipeline error:&error];
-    NSAssert(_square_pipeline, @"Failed to create pipeline state: %@", error);
-
-    MTLRenderPipelineDescriptor* circle_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
-    circle_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"circle_vert"];
-    circle_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"circle_frag"];
-    assert(circle_pipeline.vertexFunction != nil);
-    assert(circle_pipeline.fragmentFunction != nil);
-    circle_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
-    _circle_pipeline = [_view.device newRenderPipelineStateWithDescriptor:circle_pipeline error:&error];
-    NSAssert(_square_pipeline, @"Failed to create pipeline state: %@", error);
 
     // Create the command queue
     _commandQueue = [_view.device newCommandQueue];
 
     [_window setContentView:_view];
 }
+
 - (void)applicationWillTerminate:(NSNotification*)notification
 {
     // Shutdown
     [_tri_pipeline release];
     [_square_pipeline release];
     [_circle_pipeline release];
+    [_image_pipeline release];
+    [_tex_chad release];
+    [_samplerState release];
 }
 
 - (void)drawInMTKView:(nonnull MTKView*)view
 {
     // [self drawTriangle:view];
     // [self drawSquare:view];
-    [self drawSquare2:view];
+    // [self drawSquare2:view];
     // [self drawCircle:view];
+    [self drawImage:view];
 }
 
 - (void)drawTriangle:(nonnull MTKView*)view
@@ -292,6 +350,53 @@
 
     [commandBuffer presentDrawable:view.currentDrawable];
     [commandBuffer commit];
+}
+
+- (void)drawImage:(nonnull MTKView*)view
+{
+    // clang-format off
+    static const TexVertex vertices[] = {
+        // 2D positions, Tex coords
+        {{-0.5, 0.5}, {0, 1}},
+        {{-0.5, -0.5}, {0, 0}},
+        {{0.5, -0.5}, {1, 0}},
+        {{0.5, 0.5}, {1, 1}},
+    };
+    static const UInt16 indices[] = {
+        0, 1, 2,
+        2, 3, 0,
+    };
+    // clang-format on
+
+    id<MTLCommandBuffer>     cmdbuf               = [_commandQueue commandBuffer];
+    MTLRenderPassDescriptor* renderPassDescriptor = view.currentRenderPassDescriptor;
+    // Change the BG colour on the fly
+    renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0.5, 1, 1);
+
+    id<MTLRenderCommandEncoder> rcenc = [cmdbuf renderCommandEncoderWithDescriptor:renderPassDescriptor];
+    [rcenc setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
+    [rcenc setRenderPipelineState:_image_pipeline];
+
+    [rcenc setVertexBytes:vertices length:sizeof(vertices) atIndex:0];
+    [rcenc setVertexBytes:indices length:sizeof(vertices) atIndex:1];
+    [rcenc setFragmentTexture:_tex_chad atIndex:0];
+    [rcenc setFragmentSamplerState:_samplerState atIndex:0];
+
+    id<MTLBuffer> vertexBuffer, indexBuffer;
+    vertexBuffer = [view.device newBufferWithBytesNoCopy:vertices length:sizeof(vertices) options:0 deallocator:nil];
+    indexBuffer  = [view.device newBufferWithBytesNoCopy:indices length:sizeof(indices) options:0 deallocator:nil];
+
+    [rcenc setVertexBuffer:vertexBuffer offset:0 atIndex:0];
+    [rcenc drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                      indexCount:ARRLEN(indices)
+                       indexType:MTLIndexTypeUInt16
+                     indexBuffer:indexBuffer
+               indexBufferOffset:0];
+
+    [rcenc endEncoding];
+
+    [cmdbuf presentDrawable:view.currentDrawable];
+    [cmdbuf commit];
 }
 
 @end

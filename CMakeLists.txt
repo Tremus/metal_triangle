@@ -5,6 +5,7 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "10.11")
 
 add_executable(${PROJECT_NAME} MACOSX_BUNDLE
     src/main.m
+    src/stb_image.c
     ${CMAKE_BINARY_DIR}/shaders.metallib
     )
 set_target_properties(${PROJECT_NAME} PROPERTIES
