@@ -79,9 +79,30 @@ fragment half4 square_frag(RasterizerData in [[stage_in]])
     return in.colour;
 }
 
+// Hard fill
+vertex float4 circle_vert(
+    const device float2* vertices [[buffer(0)]],
+    constant vector_float2* pViewport [[buffer(1)]],
+    uint vertexID [[vertex_id]])
+{
+    float4 pos;
+    pos.xy = vertices[vertexID].xy;
+    pos.zw = float2(0, 1);
+
+    return pos;
+}
+
+fragment half4 circle_frag(RasterizerData in [[stage_in]])
+{
+    return half4(1);
+}
+
 // TODO rounded rectangle
 // TODO circle
 // TODO ellipse
 // TODO point
 // TODO straight line
 // TODO bezier line
+// TODO image
+// TODO image resize
+// TODO image blur

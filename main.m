@@ -15,6 +15,7 @@
     // The render pipeline generated from the vertex and fragment shaders in the .metal shader file.
     id<MTLRenderPipelineState> _tri_pipeline;
     id<MTLRenderPipelineState> _square_pipeline;
+    id<MTLRenderPipelineState> _circle_pipeline;
 
     // The command queue used to pass commands to the device.
     id<MTLCommandQueue> _commandQueue;
@@ -100,6 +101,15 @@
     _square_pipeline = [_view.device newRenderPipelineStateWithDescriptor:square_pipeline error:&error];
     NSAssert(_square_pipeline, @"Failed to create pipeline state: %@", error);
 
+    MTLRenderPipelineDescriptor* circle_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+    circle_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"circle_vert"];
+    circle_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"circle_frag"];
+    assert(circle_pipeline.vertexFunction != nil);
+    assert(circle_pipeline.fragmentFunction != nil);
+    circle_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
+    _circle_pipeline = [_view.device newRenderPipelineStateWithDescriptor:circle_pipeline error:&error];
+    NSAssert(_square_pipeline, @"Failed to create pipeline state: %@", error);
+
     // Create the command queue
     _commandQueue = [_view.device newCommandQueue];
 
@@ -110,12 +120,14 @@
     // Shutdown
     [_tri_pipeline release];
     [_square_pipeline release];
+    [_circle_pipeline release];
 }
 
 - (void)drawInMTKView:(nonnull MTKView*)view
 {
     // [self drawTriangle:view];
-    [self drawSquare:view];
+    // [self drawSquare:view];
+    [self drawCircle:view];
 }
 
 - (void)drawTriangle:(nonnull MTKView*)view
@@ -188,6 +200,43 @@
     [renderEncoder setRenderPipelineState:_square_pipeline];
 
     [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:AAPLVertexInputIndexVertices];
+    [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:ARRLEN(verts)];
+    [renderEncoder endEncoding];
+
+    [commandBuffer presentDrawable:view.currentDrawable];
+    [commandBuffer commit];
+}
+
+- (void)drawCircle:(nonnull MTKView*)view
+{
+    // https://youtube.com/watch?v=vasfdPx5cvY
+    static const size_t tris = 100;
+    simd_float2         verts[tris * 3 + 3];
+    float               prevX = 0;
+    float               prevY = -1;
+    for (int i = 0; i < tris + 1; i++)
+    {
+        float theta = 2 * M_PI * (float)i / (float)tris;
+
+        float x = sinf(theta);
+        float y = -cosf(theta);
+
+        verts[3 * i]     = (simd_float2){0, 0};
+        verts[3 * i + 1] = (simd_float2){prevX, prevY};
+        verts[3 * i + 2] = (simd_float2){x, y};
+
+        prevX = x;
+        prevY = y;
+    }
+
+    id<MTLCommandBuffer>        commandBuffer        = [_commandQueue commandBuffer];
+    MTLRenderPassDescriptor*    renderPassDescriptor = view.currentRenderPassDescriptor;
+    id<MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+    [renderEncoder setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
+    [renderEncoder setRenderPipelineState:_circle_pipeline];
+
+    [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:AAPLVertexInputIndexVertices];
+    [renderEncoder setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:AAPLVertexInputIndexViewportSize];
     [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:ARRLEN(verts)];
     [renderEncoder endEncoding];
 

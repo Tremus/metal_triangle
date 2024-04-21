@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
 project(metal_triangle VERSION 0.0.1 LANGUAGES C OBJC)
 
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.11")
+
 add_executable(${PROJECT_NAME} MACOSX_BUNDLE
     main.m
     ${CMAKE_BINARY_DIR}/shaders.metallib
