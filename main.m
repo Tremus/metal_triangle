@@ -127,7 +127,8 @@
 {
     // [self drawTriangle:view];
     // [self drawSquare:view];
-    [self drawCircle:view];
+    [self drawSquare2:view];
+    // [self drawCircle:view];
 }
 
 - (void)drawTriangle:(nonnull MTKView*)view
@@ -205,6 +206,55 @@
 
     [commandBuffer presentDrawable:view.currentDrawable];
     [commandBuffer commit];
+}
+
+- (void)drawSquare2:(nonnull MTKView*)view
+{
+    // clang-format off
+    static const SimpleVertex vertices[] = {
+        // 2D positions,    RGBA colors
+        {{-0.5, 0.5}, {1, 0, 0, 1}},
+        {{-0.5, -0.5}, {0, 1, 0, 1}},
+        {{0.5, -0.5}, {0, 0, 1, 1}},
+        {{0.5, 0.5}, {1, 1, 1, 1}},
+    };
+    static const UInt16 indices[] = {
+        0, 1, 2,
+        2, 3, 0,
+    };
+    // clang-format on
+
+    id<MTLCommandBuffer>     cmdbuf               = [_commandQueue commandBuffer];
+    MTLRenderPassDescriptor* renderPassDescriptor = view.currentRenderPassDescriptor;
+    // Change the BG colour on the fly
+    renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0.5, 1, 1);
+
+    id<MTLRenderCommandEncoder> cmdenc = [cmdbuf renderCommandEncoderWithDescriptor:renderPassDescriptor];
+    [cmdenc setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
+    [cmdenc setRenderPipelineState:_square_pipeline];
+
+    [cmdenc setVertexBytes:vertices length:sizeof(vertices) atIndex:0];
+    [cmdenc setVertexBytes:indices length:sizeof(vertices) atIndex:1];
+    id<MTLBuffer> vbuf = [view.device newBufferWithBytesNoCopy:vertices
+                                                        length:sizeof(vertices)
+                                                       options:0
+                                                   deallocator:nil];
+    id<MTLBuffer> ibuf = [view.device newBufferWithBytesNoCopy:indices
+                                                        length:sizeof(indices)
+                                                       options:0
+                                                   deallocator:nil];
+
+    [cmdenc setVertexBuffer:vbuf offset:0 atIndex:0];
+    [cmdenc drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                       indexCount:ARRLEN(indices)
+                        indexType:MTLIndexTypeUInt16
+                      indexBuffer:ibuf
+                indexBufferOffset:0];
+
+    [cmdenc endEncoding];
+
+    [cmdbuf presentDrawable:view.currentDrawable];
+    [cmdbuf commit];
 }
 
 - (void)drawCircle:(nonnull MTKView*)view

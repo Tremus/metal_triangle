@@ -98,7 +98,7 @@ fragment half4 circle_frag(RasterizerData in [[stage_in]])
 }
 
 // TODO rounded rectangle
-// TODO circle
+// TODO circle antialiased
 // TODO ellipse
 // TODO point
 // TODO straight line
