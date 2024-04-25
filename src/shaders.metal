@@ -97,21 +97,28 @@ fragment half4 circle_tris_frag(RasterizerData in [[stage_in]])
     return half4(1);
 }
 
-struct CircleData
+struct PositionData
 {
     float4 position [[position]];
     float2 pos2;
 };
 
-vertex CircleData
+// 0-w,0-h -> uv -1 - 1
+float2 normalise_point(float2 coord, float2 frame)
+{
+    float2 quarterview = frame / 4;
+    float2 uv = (coord - quarterview) / quarterview;
+    return uv;
+}
+
+vertex PositionData
 circle_sdf_vert(uint vertexID [[vertex_id]],
             constant float2* vertices [[buffer(0)]],
             constant float2* view [[buffer(1)]])
 {
-    CircleData out;
+    PositionData out;
 
-    float2 quarterview = view->xy / 4;
-    float2 uv = (vertices[vertexID].xy - quarterview) / quarterview;
+    float2 uv = normalise_point(vertices[vertexID].xy, view->xy);
 
     out.position.xy = uv;
     out.position.zw = float2(0, 1);
@@ -121,17 +128,60 @@ circle_sdf_vert(uint vertexID [[vertex_id]],
     return out;
 }
 
-fragment half4 circle_sdf_frag(CircleData in [[stage_in]],
+fragment half4 circle_sdf_frag(PositionData in [[stage_in]],
                             constant float2* view [[buffer(0)]])
 {
     half4 col = half4(0,0,0,1);
 
-    float2 quarterview = view->xy / 4;
-    float2 uv = (in.pos2 - quarterview) / quarterview;
+    float2 uv = normalise_point(in.pos2, view->xy);
 
     float distance = 1 - length(uv);
 
     col.rgb = smoothstep(0, 0.005, distance);
+
+    return col;
+}
+
+vertex PositionData
+line_vert(uint vertexID [[vertex_id]],
+          constant float2* vertices [[buffer(0)]],
+          constant float2* view [[buffer(1)]])
+{
+    PositionData out;
+
+    float2 uv = normalise_point(vertices[vertexID].xy, view->xy);
+
+    out.position.xy = uv;
+    out.position.zw = float2(0, 1);
+
+    out.pos2 = vertices[vertexID];
+
+    return out;
+}
+
+fragment half4 line_frag(PositionData in [[stage_in]],
+                         constant float2* view [[buffer(0)]])
+{
+    // https://www.youtube.com/watch?v=cU5WcrU_YI4
+    half4 col = half4(0,0,0,1);
+
+    // TODO: fix coordinates.
+    // Currently p1 will show up on the bottom left of the screen and p2 on the top right
+    // I'd like the y value to be inverted
+    float2 p1 = float2(100, 100);
+    float2 p2 = float2(400, 400);
+    float2 p3 = in.pos2;
+
+    float2 p12 = p2 - p1;
+    float2 p13 = p3 - p1;
+
+    float d = dot(p12, p13) / length(p12);
+    float2 p4 = p1 + normalize(p12) * d;
+
+    if (length(p3 - p4) < 5.0 &&
+        length(p4 - p1) <= length(p12) &&
+        length(p4 - p2) <= length(p12))
+        col.g = 1;
 
     return col;
 }

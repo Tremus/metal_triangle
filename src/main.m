@@ -19,6 +19,7 @@
     id<MTLRenderPipelineState> _square_pipeline;
     id<MTLRenderPipelineState> _circle_tris_pipeline;
     id<MTLRenderPipelineState> _circle_sdf_pipeline;
+    id<MTLRenderPipelineState> _line_pipeline;
     id<MTLRenderPipelineState> _image_pipeline;
 
     // The command queue used to pass commands to the device.
@@ -163,6 +164,15 @@
         _circle_sdf_pipeline = [_view.device newRenderPipelineStateWithDescriptor:circle_sdf_pipeline error:&error];
         xassert(_circle_sdf_pipeline);
 
+        MTLRenderPipelineDescriptor* line_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+        line_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"line_vert"];
+        line_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"line_frag"];
+        xassert(line_pipeline.vertexFunction != nil);
+        xassert(line_pipeline.fragmentFunction != nil);
+        line_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
+        _line_pipeline = [_view.device newRenderPipelineStateWithDescriptor:line_pipeline error:&error];
+        xassert(_line_pipeline);
+
         MTLRenderPipelineDescriptor* image_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
         image_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"image_vert"];
         image_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"image_frag"];
@@ -186,6 +196,7 @@
     [_square_pipeline release];
     [_circle_tris_pipeline release];
     [_circle_sdf_pipeline release];
+    [_line_pipeline release];
     [_image_pipeline release];
     [_tex_chad release];
     [_samplerState release];
@@ -197,7 +208,8 @@
     // [self drawSquare:view];
     // [self drawSquareIndexed:view];
     // [self drawCircleTris:view];
-    [self drawCircleSDF:view];
+    // [self drawCircleSDF:view];
+    [self drawLine:view];
     // [self drawImage:view];
 }
 
@@ -281,14 +293,14 @@
 - (void)drawSquareIndexed:(nonnull MTKView*)view
 {
     // clang-format off
-    static const SimpleVertex vertices[] = {
+    static SimpleVertex vertices[] = {
         // 2D positions,    RGBA colors
         {{-0.5, 0.5}, {1, 0, 0, 1}},
         {{-0.5, -0.5}, {0, 1, 0, 1}},
         {{0.5, -0.5}, {0, 0, 1, 1}},
         {{0.5, 0.5}, {1, 1, 1, 1}},
     };
-    static const UInt16 indices[] = {
+    static UInt16 indices[] = {
         0, 1, 2,
         2, 3, 0,
     };
@@ -367,13 +379,13 @@
 {
     // https://www.youtube.com/watch?v=xf7Y988cPRk
     // clang-format off
-    static const simd_float2 vertices[] = {
+    static simd_float2 vertices[] = {
         {0, 0},
         {0, 500},
         {500, 0},
         {500, 500},
     };
-    static const UInt16 indices[] = {
+    static UInt16 indices[] = {
         0, 1, 2,
         1, 2, 3,
     };
@@ -413,17 +425,66 @@
     [commandBuffer commit];
 }
 
+- (void)drawLine:(nonnull MTKView*)view
+{
+    // clang-format off
+    static simd_float2 vertices[] = {
+        {0, 0},
+        {0, 500},
+        {500, 0},
+        {500, 500},
+    };
+    static UInt16 indices[] = {
+        0, 1, 2,
+        1, 2, 3,
+    };
+    // clang-format on
+
+    id<MTLCommandBuffer>     commandBuffer        = [_commandQueue commandBuffer];
+    MTLRenderPassDescriptor* renderPassDescriptor = view.currentRenderPassDescriptor;
+    // Change the BG colour on the fly
+    renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0.5, 1, 1);
+    id<MTLRenderCommandEncoder> renc = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+    [renc setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
+    [renc setRenderPipelineState:_line_pipeline];
+
+    [renc setVertexBytes:vertices length:sizeof(vertices) atIndex:0];
+    [renc setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:1];
+    [renc setFragmentBytes:&_viewsize length:sizeof(_viewsize) atIndex:0];
+
+    id<MTLBuffer> vbuf = [view.device newBufferWithBytesNoCopy:vertices
+                                                        length:sizeof(vertices)
+                                                       options:0
+                                                   deallocator:nil];
+    id<MTLBuffer> ibuf = [view.device newBufferWithBytesNoCopy:indices
+                                                        length:sizeof(indices)
+                                                       options:0
+                                                   deallocator:nil];
+
+    [renc setVertexBuffer:vbuf offset:0 atIndex:0];
+    [renc drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                     indexCount:ARRLEN(indices)
+                      indexType:MTLIndexTypeUInt16
+                    indexBuffer:ibuf
+              indexBufferOffset:0];
+
+    [renc endEncoding];
+
+    [commandBuffer presentDrawable:view.currentDrawable];
+    [commandBuffer commit];
+}
+
 - (void)drawImage:(nonnull MTKView*)view
 {
     // clang-format off
-    static const TexVertex vertices[] = {
+    static TexVertex vertices[] = {
         // 2D positions, Tex coords
         {{-0.5, 0.5}, {0, 1}},
         {{-0.5, -0.5}, {0, 0}},
         {{0.5, -0.5}, {1, 0}},
         {{0.5, 0.5}, {1, 1}},
     };
-    static const UInt16 indices[] = {
+    static UInt16 indices[] = {
         0, 1, 2,
         2, 3, 0,
     };
