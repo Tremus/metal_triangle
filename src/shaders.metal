@@ -80,7 +80,7 @@ fragment half4 square_frag(RasterizerData in [[stage_in]])
 }
 
 // Hard fill
-vertex float4 circle_vert(
+vertex float4 circle_tris_vert(
     const device float2* vertices [[buffer(0)]],
     constant vector_float2* pViewport [[buffer(1)]],
     uint vertexID [[vertex_id]])
@@ -92,9 +92,48 @@ vertex float4 circle_vert(
     return pos;
 }
 
-fragment half4 circle_frag(RasterizerData in [[stage_in]])
+fragment half4 circle_tris_frag(RasterizerData in [[stage_in]])
 {
     return half4(1);
+}
+
+struct CircleData
+{
+    float4 position [[position]];
+    float2 pos2;
+};
+
+vertex CircleData
+circle_sdf_vert(uint vertexID [[vertex_id]],
+            constant float2* vertices [[buffer(0)]],
+            constant float2* view [[buffer(1)]])
+{
+    CircleData out;
+
+    float2 quarterview = view->xy / 4;
+    float2 uv = (vertices[vertexID].xy - quarterview) / quarterview;
+
+    out.position.xy = uv;
+    out.position.zw = float2(0, 1);
+
+    out.pos2 = vertices[vertexID];
+
+    return out;
+}
+
+fragment half4 circle_sdf_frag(CircleData in [[stage_in]],
+                            constant float2* view [[buffer(0)]])
+{
+    half4 col = half4(0,0,0,1);
+
+    float2 quarterview = view->xy / 4;
+    float2 uv = (in.pos2 - quarterview) / quarterview;
+
+    float distance = 1 - length(uv);
+
+    col.rgb = smoothstep(0, 0.005, distance);
+
+    return col;
 }
 
 struct RasterizeImage
@@ -105,7 +144,7 @@ struct RasterizeImage
 
 vertex RasterizeImage
 image_vert(uint vertexID [[vertex_id]],
-            constant TexVertex* vertices [[buffer(0)]])
+           constant TexVertex* vertices [[buffer(0)]])
 {
     RasterizeImage out;
 

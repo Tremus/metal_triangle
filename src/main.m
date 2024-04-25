@@ -17,7 +17,8 @@
     // The render pipeline generated from the vertex and fragment shaders in the .metal shader file.
     id<MTLRenderPipelineState> _tri_pipeline;
     id<MTLRenderPipelineState> _square_pipeline;
-    id<MTLRenderPipelineState> _circle_pipeline;
+    id<MTLRenderPipelineState> _circle_tris_pipeline;
+    id<MTLRenderPipelineState> _circle_sdf_pipeline;
     id<MTLRenderPipelineState> _image_pipeline;
 
     // The command queue used to pass commands to the device.
@@ -144,14 +145,23 @@
         _square_pipeline = [_view.device newRenderPipelineStateWithDescriptor:square_pipeline error:&error];
         xassert(_square_pipeline);
 
-        MTLRenderPipelineDescriptor* circle_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
-        circle_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"circle_vert"];
-        circle_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"circle_frag"];
-        xassert(circle_pipeline.vertexFunction != nil);
-        xassert(circle_pipeline.fragmentFunction != nil);
-        circle_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
-        _circle_pipeline = [_view.device newRenderPipelineStateWithDescriptor:circle_pipeline error:&error];
-        xassert(_circle_pipeline);
+        MTLRenderPipelineDescriptor* circle_tris_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+        circle_tris_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"circle_tris_vert"];
+        circle_tris_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"circle_tris_frag"];
+        xassert(circle_tris_pipeline.vertexFunction != nil);
+        xassert(circle_tris_pipeline.fragmentFunction != nil);
+        circle_tris_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
+        _circle_tris_pipeline = [_view.device newRenderPipelineStateWithDescriptor:circle_tris_pipeline error:&error];
+        xassert(_circle_tris_pipeline);
+
+        MTLRenderPipelineDescriptor* circle_sdf_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
+        circle_sdf_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"circle_sdf_vert"];
+        circle_sdf_pipeline.fragmentFunction             = [defaultLibrary newFunctionWithName:@"circle_sdf_frag"];
+        xassert(circle_sdf_pipeline.vertexFunction != nil);
+        xassert(circle_sdf_pipeline.fragmentFunction != nil);
+        circle_sdf_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
+        _circle_sdf_pipeline = [_view.device newRenderPipelineStateWithDescriptor:circle_sdf_pipeline error:&error];
+        xassert(_circle_sdf_pipeline);
 
         MTLRenderPipelineDescriptor* image_pipeline = [[MTLRenderPipelineDescriptor alloc] init];
         image_pipeline.vertexFunction               = [defaultLibrary newFunctionWithName:@"image_vert"];
@@ -174,7 +184,8 @@
     // Shutdown
     [_tri_pipeline release];
     [_square_pipeline release];
-    [_circle_pipeline release];
+    [_circle_tris_pipeline release];
+    [_circle_sdf_pipeline release];
     [_image_pipeline release];
     [_tex_chad release];
     [_samplerState release];
@@ -184,9 +195,10 @@
 {
     // [self drawTriangle:view];
     // [self drawSquare:view];
-    // [self drawSquare2:view];
-    // [self drawCircle:view];
-    [self drawImage:view];
+    // [self drawSquareIndexed:view];
+    // [self drawCircleTris:view];
+    [self drawCircleSDF:view];
+    // [self drawImage:view];
 }
 
 - (void)drawTriangle:(nonnull MTKView*)view
@@ -266,7 +278,7 @@
     [commandBuffer commit];
 }
 
-- (void)drawSquare2:(nonnull MTKView*)view
+- (void)drawSquareIndexed:(nonnull MTKView*)view
 {
     // clang-format off
     static const SimpleVertex vertices[] = {
@@ -292,7 +304,6 @@
     [cmdenc setRenderPipelineState:_square_pipeline];
 
     [cmdenc setVertexBytes:vertices length:sizeof(vertices) atIndex:0];
-    [cmdenc setVertexBytes:indices length:sizeof(vertices) atIndex:1];
     id<MTLBuffer> vbuf = [view.device newBufferWithBytesNoCopy:vertices
                                                         length:sizeof(vertices)
                                                        options:0
@@ -315,7 +326,7 @@
     [cmdbuf commit];
 }
 
-- (void)drawCircle:(nonnull MTKView*)view
+- (void)drawCircleTris:(nonnull MTKView*)view
 {
     // https://youtube.com/watch?v=vasfdPx5cvY
     static const size_t tris = 100;
@@ -341,12 +352,62 @@
     MTLRenderPassDescriptor*    renderPassDescriptor = view.currentRenderPassDescriptor;
     id<MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
     [renderEncoder setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
-    [renderEncoder setRenderPipelineState:_circle_pipeline];
+    [renderEncoder setRenderPipelineState:_circle_tris_pipeline];
 
     [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:AAPLVertexInputIndexVertices];
     [renderEncoder setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:AAPLVertexInputIndexViewportSize];
     [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:ARRLEN(verts)];
     [renderEncoder endEncoding];
+
+    [commandBuffer presentDrawable:view.currentDrawable];
+    [commandBuffer commit];
+}
+
+- (void)drawCircleSDF:(nonnull MTKView*)view
+{
+    // https://www.youtube.com/watch?v=xf7Y988cPRk
+    // clang-format off
+    static const simd_float2 vertices[] = {
+        {0, 0},
+        {0, 500},
+        {500, 0},
+        {500, 500},
+    };
+    static const UInt16 indices[] = {
+        0, 1, 2,
+        1, 2, 3,
+    };
+    // clang-format on
+
+    id<MTLCommandBuffer>     commandBuffer        = [_commandQueue commandBuffer];
+    MTLRenderPassDescriptor* renderPassDescriptor = view.currentRenderPassDescriptor;
+    // Change the BG colour on the fly
+    renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0, 0.5, 1, 1);
+    id<MTLRenderCommandEncoder> renc = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+    [renc setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
+    [renc setRenderPipelineState:_circle_sdf_pipeline];
+
+    [renc setVertexBytes:vertices length:sizeof(vertices) atIndex:0];
+    [renc setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:1];
+    [renc setFragmentBytes:&_viewsize length:sizeof(_viewsize) atIndex:0];
+
+    id<MTLBuffer> vbuf = [view.device newBufferWithBytesNoCopy:vertices
+                                                        length:sizeof(vertices)
+                                                       options:0
+                                                   deallocator:nil];
+    id<MTLBuffer> ibuf = [view.device newBufferWithBytesNoCopy:indices
+                                                        length:sizeof(indices)
+                                                       options:0
+                                                   deallocator:nil];
+
+    [renc setVertexBuffer:vbuf offset:0 atIndex:0];
+    [renc drawIndexedPrimitives:MTLPrimitiveTypeTriangle
+                     indexCount:ARRLEN(indices)
+                      indexType:MTLIndexTypeUInt16
+                    indexBuffer:ibuf
+              indexBufferOffset:0];
+
+    [renc endEncoding];
 
     [commandBuffer presentDrawable:view.currentDrawable];
     [commandBuffer commit];
