@@ -10,7 +10,7 @@ Metal shaders used for this sample
 using namespace metal;
 
 // Include header shared between this Metal shader code and C code executing Metal API commands.
-#include "AAPLShaderTypes.h"
+#include "shaders.h"
 // Vertex shader outputs and fragment shader inputs
 struct RasterizerData
 {
@@ -28,8 +28,8 @@ struct RasterizerData
 
 vertex RasterizerData
 triangle_vert(uint vertexID [[vertex_id]],
-             constant AAPLVertex *vertices [[buffer(AAPLVertexInputIndexVertices)]],
-             constant vector_float2* viewportSizePointer [[buffer(AAPLVertexInputIndexViewportSize)]])
+             constant SimpleVertex *vertices [[buffer(SimpleVertexInputIndexVertices)]],
+             constant vector_float2* viewportSizePointer [[buffer(SimpleVertexInputIndexViewportSize)]])
 {
     RasterizerData out;
 
@@ -62,7 +62,7 @@ fragment half4 triangle_frag(RasterizerData in [[stage_in]])
 
 vertex RasterizerData
 square_vert(uint vertexID [[vertex_id]],
-            constant SimpleVertex* vertices [[buffer(AAPLVertexInputIndexVertices)]])
+            constant SimpleVertex* vertices [[buffer(SimpleVertexInputIndexVertices)]])
 {
     RasterizerData out;
     
@@ -214,10 +214,8 @@ fragment half4 image_frag(RasterizeImage in [[stage_in]],
 }
 
 // TODO rounded rectangle
-// TODO circle antialiased
 // TODO ellipse
 // TODO point
-// TODO straight line
 // TODO bezier line
 // TODO image resize
 // TODO image blur

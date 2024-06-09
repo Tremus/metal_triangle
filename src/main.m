@@ -1,7 +1,7 @@
 #include <Cocoa/Cocoa.h>
 #include <MetalKit/MetalKit.h>
 
-#include "AAPLShaderTypes.h"
+#include "shaders.h"
 #include "stb_image.h"
 
 #define ARRLEN(a)     (sizeof(a) / sizeof(a[0]))
@@ -215,7 +215,7 @@
 
 - (void)drawTriangle:(nonnull MTKView*)view
 {
-    static const AAPLVertex triangleVertices[] = {
+    static const SimpleVertex triangleVertices[] = {
         // 2D positions,    RGBA colors
         {{250, -250}, {1, 0, 0, 1}},
         {{-250, -250}, {0, 1, 0, 1}},
@@ -244,9 +244,9 @@
         // Pass in the parameter data.
         [renderEncoder setVertexBytes:triangleVertices
                                length:sizeof(triangleVertices)
-                              atIndex:AAPLVertexInputIndexVertices];
+                              atIndex:SimpleVertexInputIndexVertices];
 
-        [renderEncoder setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:AAPLVertexInputIndexViewportSize];
+        [renderEncoder setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:SimpleVertexInputIndexViewportSize];
 
         // Draw the triangle.
         [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
@@ -282,7 +282,7 @@
     [renderEncoder setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
     [renderEncoder setRenderPipelineState:_square_pipeline];
 
-    [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:AAPLVertexInputIndexVertices];
+    [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:SimpleVertexInputIndexVertices];
     [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:ARRLEN(verts)];
     [renderEncoder endEncoding];
 
@@ -366,8 +366,8 @@
     [renderEncoder setViewport:(MTLViewport){0.0, 0.0, _viewsize.x, _viewsize.y, 0.0, 1.0}];
     [renderEncoder setRenderPipelineState:_circle_tris_pipeline];
 
-    [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:AAPLVertexInputIndexVertices];
-    [renderEncoder setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:AAPLVertexInputIndexViewportSize];
+    [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:SimpleVertexInputIndexVertices];
+    [renderEncoder setVertexBytes:&_viewsize length:sizeof(_viewsize) atIndex:SimpleVertexInputIndexViewportSize];
     [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:ARRLEN(verts)];
     [renderEncoder endEncoding];
 
