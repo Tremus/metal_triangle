@@ -7,155 +7,8 @@
 #define ARRLEN(a)     (sizeof(a) / sizeof(a[0]))
 #define xassert(cond) (cond) ? (void)0 : __builtin_debugtrap()
 
-#pragma mark -MetalAdder
-
-NS_ASSUME_NONNULL_BEGIN
-
-@interface MetalAdder : NSObject
-- (instancetype)initWithDevice:(id<MTLDevice>)device;
-- (void)sendComputeCommand;
-@end
-
-NS_ASSUME_NONNULL_END
-
-const unsigned int arrayLength = 1 << 24;
-const unsigned int bufferSize  = arrayLength * sizeof(float);
-
-@implementation MetalAdder
-{
-    id<MTLDevice> _mDevice;
-
-    // The compute pipeline generated from the compute kernel in the .metal shader file.
-    id<MTLComputePipelineState> _mAddFunctionPSO;
-
-    // The command queue used to pass commands to the device.
-    id<MTLCommandQueue> _mCommandQueue;
-
-    // Buffers to hold data.
-    id<MTLBuffer> _mBufferA;
-    id<MTLBuffer> _mBufferB;
-    id<MTLBuffer> _mBufferResult;
-}
-
-- (instancetype)initWithDevice:(id<MTLDevice>)device
-{
-    self = [super init];
-    if (self)
-    {
-        _mDevice = device;
-
-        NSError* error = nil;
-
-        // Load the shader files with a .metal file extension in the project
-        id<MTLLibrary> defaultLibrary = nil;
-        NSURL*         url            = [[NSURL alloc] initWithString:@(PATH_SHADERS)];
-        defaultLibrary                = [device newLibraryWithURL:url error:nil];
-
-        id<MTLFunction> addFunction = [defaultLibrary newFunctionWithName:@"add_arrays"];
-        if (addFunction == nil)
-        {
-            NSLog(@"Failed to find the adder function.");
-            return nil;
-        }
-
-        // Create a compute pipeline state object.
-        _mAddFunctionPSO = [_mDevice newComputePipelineStateWithFunction:addFunction error:&error];
-        if (_mAddFunctionPSO == nil)
-        {
-            //  If the Metal API validation is enabled, you can find out more information about what
-            //  went wrong.  (Metal API validation is enabled by default when a debug build is run
-            //  from Xcode)
-            NSLog(@"Failed to created pipeline state object, error %@.", error);
-            return nil;
-        }
-
-        _mCommandQueue = [_mDevice newCommandQueue];
-        if (_mCommandQueue == nil)
-        {
-            NSLog(@"Failed to find the command queue.");
-            return nil;
-        }
-
-        // Prepare data
-        // Allocate three buffers to hold our initial data and the result.
-        _mBufferA      = [_mDevice newBufferWithLength:bufferSize options:MTLResourceStorageModeShared];
-        _mBufferB      = [_mDevice newBufferWithLength:bufferSize options:MTLResourceStorageModeShared];
-        _mBufferResult = [_mDevice newBufferWithLength:bufferSize options:MTLResourceStorageModeShared];
-
-        float* dataPtr = _mBufferA.contents;
-        for (unsigned long index = 0; index < arrayLength; index++)
-            dataPtr[index] = (float)rand() / (float)(RAND_MAX);
-
-        dataPtr = _mBufferB.contents;
-        for (unsigned long index = 0; index < arrayLength; index++)
-            dataPtr[index] = (float)rand() / (float)(RAND_MAX);
-    }
-
-    return self;
-}
-
-- (void)sendComputeCommand
-{
-    // Create a command buffer to hold commands.
-    id<MTLCommandBuffer> commandBuffer = [_mCommandQueue commandBuffer];
-    assert(commandBuffer != nil);
-
-    // Start a compute pass.
-    id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
-    assert(computeEncoder != nil);
-
-    // Add command
-    {
-        // Encode the pipeline state object and its parameters.
-        [computeEncoder setComputePipelineState:_mAddFunctionPSO];
-        [computeEncoder setBuffer:_mBufferA offset:0 atIndex:0];
-        [computeEncoder setBuffer:_mBufferB offset:0 atIndex:1];
-        [computeEncoder setBuffer:_mBufferResult offset:0 atIndex:2];
-
-        MTLSize gridSize = MTLSizeMake(arrayLength, 1, 1);
-
-        // Calculate a threadgroup size.
-        NSUInteger threadGroupSize = _mAddFunctionPSO.maxTotalThreadsPerThreadgroup;
-        if (threadGroupSize > arrayLength)
-        {
-            threadGroupSize = arrayLength;
-        }
-        MTLSize threadgroupSize = MTLSizeMake(threadGroupSize, 1, 1);
-
-        // Encode the compute command.
-        [computeEncoder dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
-    }
-
-    // End the compute pass.
-    [computeEncoder endEncoding];
-
-    // Execute the command.
-    [commandBuffer commit];
-
-    // Normally, you want to do other work in your app while the GPU is running,
-    // but in this example, the code simply blocks until the calculation is complete.
-    [commandBuffer waitUntilCompleted];
-
-    [self verifyResults];
-}
-
-- (void)verifyResults
-{
-    float* a      = _mBufferA.contents;
-    float* b      = _mBufferB.contents;
-    float* result = _mBufferResult.contents;
-
-    for (unsigned long index = 0; index < arrayLength; index++)
-    {
-        if (result[index] != (a[index] + b[index]))
-        {
-            printf("Compute ERROR: index=%lu result=%g vs %g=a+b\n", index, result[index], a[index] + b[index]);
-            assert(result[index] == (a[index] + b[index]));
-        }
-    }
-    printf("Compute results as expected\n");
-}
-@end
+const unsigned int COMPUTE_ARRAY_LENGTH = 1 << 24;
+const unsigned int COMPUTE_BUFFER_SIZE  = COMPUTE_ARRAY_LENGTH * sizeof(float);
 
 #pragma mark -Delegate
 
@@ -179,6 +32,15 @@ const unsigned int bufferSize  = arrayLength * sizeof(float);
 
     id<MTLTexture>      _tex_chad;
     id<MTLSamplerState> _samplerState;
+
+    // https://developer.apple.com/documentation/metal/performing_calculations_on_a_gpu
+    id<MTLComputePipelineState> _PSO_compute;
+    id<MTLBuffer>               _buffer_compute_a;
+    id<MTLBuffer>               _buffer_compute_b;
+    id<MTLBuffer>               _buffer_compute_result;
+
+    // TODO:
+    // https://stackoverflow.com/questions/53970204/applying-compute-kernel-function-to-vertex-buffer-before-vertex-shader
 };
 
 @end
@@ -262,7 +124,7 @@ const unsigned int bufferSize  = arrayLength * sizeof(float);
         if (@available(macOS 10.13, *))
         {
             NSURL* url     = [[NSURL alloc] initWithString:@(PATH_SHADERS)];
-            defaultLibrary = [_view.device newLibraryWithURL:url error:nil];
+            defaultLibrary = [_view.device newLibraryWithURL:url error:&error];
             xassert(defaultLibrary);
             [url release];
         }
@@ -335,6 +197,31 @@ const unsigned int bufferSize  = arrayLength * sizeof(float);
         image_pipeline.colorAttachments[0].pixelFormat = _view.colorPixelFormat;
         _image_pipeline = [_view.device newRenderPipelineStateWithDescriptor:image_pipeline error:&error];
         xassert(_image_pipeline);
+
+        id<MTLFunction> addFunction = [defaultLibrary newFunctionWithName:@"add_arrays"];
+        xassert(addFunction);
+
+        // Create a compute pipeline state object.
+        // If the Metal API validation is enabled, you can find out more information about what
+        // went wrong.  (Metal API validation is enabled by default when a debug build is run
+        // from Xcode)
+        _PSO_compute = [_view.device newComputePipelineStateWithFunction:addFunction error:&error];
+        xassert(_PSO_compute);
+
+        // Prepare data
+        // Allocate three buffers to hold our initial data and the result.
+        _buffer_compute_a = [_view.device newBufferWithLength:COMPUTE_BUFFER_SIZE options:MTLResourceStorageModeShared];
+        _buffer_compute_b = [_view.device newBufferWithLength:COMPUTE_BUFFER_SIZE options:MTLResourceStorageModeShared];
+        _buffer_compute_result = [_view.device newBufferWithLength:COMPUTE_BUFFER_SIZE
+                                                           options:MTLResourceStorageModeShared];
+
+        float* dataPtr = _buffer_compute_a.contents;
+        for (int i = 0; i < COMPUTE_ARRAY_LENGTH; i++)
+            dataPtr[i] = (float)rand() / (float)(RAND_MAX);
+
+        dataPtr = _buffer_compute_b.contents;
+        for (int i = 0; i < COMPUTE_ARRAY_LENGTH; i++)
+            dataPtr[i] = (float)rand() / (float)(RAND_MAX);
     }
 
     // Create the command queue
@@ -358,6 +245,8 @@ const unsigned int bufferSize  = arrayLength * sizeof(float);
 
 - (void)drawInMTKView:(nonnull MTKView*)view
 {
+    [self computeAddArrays];
+
     // [self drawTriangle:view];
     [self drawSquare:view];
     // [self drawSquareIndexed:view];
@@ -675,30 +564,79 @@ const unsigned int bufferSize  = arrayLength * sizeof(float);
     [cmdbuf commit];
 }
 
+// https://developer.apple.com/documentation/metal/performing_calculations_on_a_gpu
+- (void)computeAddArrays
+{
+    // Create a command buffer to hold commands.
+    id<MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
+    assert(commandBuffer != nil);
+
+    // Start a compute pass.
+    id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
+    assert(computeEncoder != nil);
+
+    // Add command
+    {
+        // Encode the pipeline state object and its parameters.
+        [computeEncoder setComputePipelineState:_PSO_compute];
+        [computeEncoder setBuffer:_buffer_compute_a offset:0 atIndex:0];
+        [computeEncoder setBuffer:_buffer_compute_b offset:0 atIndex:1];
+        [computeEncoder setBuffer:_buffer_compute_result offset:0 atIndex:2];
+
+        MTLSize gridSize = MTLSizeMake(COMPUTE_ARRAY_LENGTH, 1, 1);
+
+        // Calculate a threadgroup size.
+        NSUInteger threadGroupSize = _PSO_compute.maxTotalThreadsPerThreadgroup; // 1024
+        if (threadGroupSize > COMPUTE_ARRAY_LENGTH)
+            threadGroupSize = COMPUTE_ARRAY_LENGTH;
+        MTLSize threadgroupSize = MTLSizeMake(threadGroupSize, 1, 1);
+
+        // Encode the compute command.
+
+        // [computeEncoder dispatchThreadgroups:gridSize threadsPerThreadgroup:threadgroupSize];
+        [computeEncoder dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
+    }
+
+    // End the compute pass.
+    [computeEncoder endEncoding];
+
+    // Execute the command.
+    [commandBuffer commit];
+
+    // Normally, you want to do other work in your app while the GPU is running,
+    // but in this example, the code simply blocks until the calculation is complete.
+    [commandBuffer waitUntilCompleted];
+
+    [self verifyResults];
+}
+
+- (void)verifyResults
+{
+    float* a      = _buffer_compute_a.contents;
+    float* b      = _buffer_compute_b.contents;
+    float* result = _buffer_compute_result.contents;
+
+    for (unsigned long index = 0; index < COMPUTE_ARRAY_LENGTH; index++)
+    {
+        if (result[index] != (a[index] + b[index]))
+        {
+            printf("Compute ERROR: index=%lu result=%g vs %g=a+b\n", index, result[index], a[index] + b[index]);
+            xassert(result[index] == (a[index] + b[index]));
+        }
+    }
+    printf("Compute results as expected\n");
+}
+
 @end
 
-// int main()
-// {
-//     [NSApplication sharedApplication];
-//     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-//     [NSApp activateIgnoringOtherApps:YES];
-//     [NSApp setDelegate:[[Delegate alloc] init]];
-
-//     [NSApp run];
-
-//     return 0;
-// }
-
-int main(int argc, const char* argv[])
+int main()
 {
-    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    [NSApplication sharedApplication];
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    [NSApp activateIgnoringOtherApps:YES];
+    [NSApp setDelegate:[[Delegate alloc] init]];
 
-    // Create the custom object used to encapsulate the Metal code.
-    // Initializes objects to communicate with the GPU.
-    MetalAdder* adder = [[MetalAdder alloc] initWithDevice:device];
-
-    // Send a command to the GPU to perform the calculation.
-    [adder sendComputeCommand];
+    [NSApp run];
 
     return 0;
 }
