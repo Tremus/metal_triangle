@@ -213,6 +213,20 @@ fragment half4 image_frag(RasterizeImage in [[stage_in]],
     return half4(sample.r, sample.g, sample.b, 1);
 }
 
+//==================================================
+
+// https://developer.apple.com/documentation/metal/performing_calculations_on_a_gpu
+kernel void add_arrays(device const float* inA,
+                       device const float* inB,
+                       device float* result,
+                       uint index [[thread_position_in_grid]])
+{
+    // the for-loop is replaced with a collection of threads, each of which
+    // calls this function.
+    result[index] = inA[index] + inB[index];
+}
+
+
 // TODO rounded rectangle
 // TODO ellipse
 // TODO point
